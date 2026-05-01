@@ -16,6 +16,29 @@ export type ScenarioPreset = {
   indicatorValues: Record<string, ScenarioIndicatorInput>;
 };
 
+export const eventScenarioPresets = [
+  {
+    key: "none",
+    label: "No Shock Overlay",
+    description: "Run the macro engine from your raw indicator inputs only.",
+  },
+  {
+    key: "new-war",
+    label: "New War / Geopolitical Conflict",
+    description: "Energy, shipping, risk-off, and dollar-tightening shock.",
+  },
+  {
+    key: "tariff-escalation",
+    label: "Tariff Escalation",
+    description: "Import-price inflation and trade-growth slowdown shock.",
+  },
+  {
+    key: "banking-stress",
+    label: "Banking Stress Event",
+    description: "Credit tightening and confidence shock through spreads and funding stress.",
+  },
+] as const;
+
 type ScenarioStore = {
   label: string;
   notes: string;

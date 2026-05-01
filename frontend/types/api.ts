@@ -153,6 +153,12 @@ export interface EngineExecutionInput {
   triggered_by?: string;
   notes?: string;
   persist_opportunities?: boolean;
+  event_scenario?: {
+    scenario_key?: string;
+    severity?: "mild" | "base" | "severe";
+    horizon?: "immediate" | "3m" | "12m";
+    confidence?: number;
+  };
   indicator_values: Record<string, {
     signal?: number;
     value?: number;
@@ -170,4 +176,3 @@ export interface DivergenceAnalysisInput {
   persist?: boolean;
   notes?: string;
 }
-

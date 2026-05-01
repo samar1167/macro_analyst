@@ -11,16 +11,31 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { useEngineExecution } from "@/hooks/use-platform-data";
-import { scenarioPresets, useScenarioStore } from "@/store/scenario-store";
+import { eventScenarioPresets, scenarioPresets, useScenarioStore } from "@/store/scenario-store";
 
 export function ScenarioWorkbench() {
   const { label, notes, persistOpportunities, indicatorValues, resetScenario, setIndicatorValue, setScenarioMeta } = useScenarioStore();
   const mutation = useEngineExecution();
   const [selectedPresetKey, setSelectedPresetKey] = useState(scenarioPresets[0]?.key ?? "");
+  const [selectedShockKey, setSelectedShockKey] = useState("none");
+  const [shockSeverity, setShockSeverity] = useState<"mild" | "base" | "severe">("base");
+  const [shockHorizon, setShockHorizon] = useState<"immediate" | "3m" | "12m">("3m");
+  const [shockConfidence, setShockConfidence] = useState(0.8);
 
   const entries = useMemo(() => Object.entries(indicatorValues), [indicatorValues]);
   const simulationStory = mutation.data?.payload?.simulation_story as
     | {
+        shock_scenario?: {
+          label?: string;
+          severity?: string;
+          horizon?: string;
+          channels?: string[];
+          applied_impacts?: {
+            indicator_code: string;
+            signal_delta: number;
+            value_delta: number;
+          }[];
+        };
         regime_detected?: {
           regime_name?: string;
           score?: number;
@@ -116,6 +131,63 @@ export function ScenarioWorkbench() {
                 </select>
               </div>
             </div>
+            <div className="rounded-2xl border border-border/70 bg-panel/50 p-4">
+              <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Shock / Situation Layer</div>
+              <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Event</label>
+                  <select
+                    className="h-10 w-full rounded-xl border border-border bg-panel px-3 text-sm"
+                    value={selectedShockKey}
+                    onChange={(event) => setSelectedShockKey(event.target.value)}
+                  >
+                    {eventScenarioPresets.map((preset) => (
+                      <option key={preset.key} value={preset.key}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Severity</label>
+                  <select
+                    className="h-10 w-full rounded-xl border border-border bg-panel px-3 text-sm"
+                    value={shockSeverity}
+                    onChange={(event) => setShockSeverity(event.target.value as "mild" | "base" | "severe")}
+                  >
+                    <option value="mild">Mild</option>
+                    <option value="base">Base</option>
+                    <option value="severe">Severe</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Horizon</label>
+                  <select
+                    className="h-10 w-full rounded-xl border border-border bg-panel px-3 text-sm"
+                    value={shockHorizon}
+                    onChange={(event) => setShockHorizon(event.target.value as "immediate" | "3m" | "12m")}
+                  >
+                    <option value="immediate">Immediate</option>
+                    <option value="3m">3 Months</option>
+                    <option value="12m">12 Months</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Confidence</label>
+                  <Input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    value={shockConfidence}
+                    onChange={(event) => setShockConfidence(Number(event.target.value))}
+                  />
+                </div>
+              </div>
+              <div className="mt-3 text-sm text-muted-foreground">
+                {eventScenarioPresets.find((preset) => preset.key === selectedShockKey)?.description}
+              </div>
+            </div>
             <div className="space-y-2">
               <label className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Notes</label>
               <Textarea value={notes} onChange={(event) => setScenarioMeta({ notes: event.target.value })} />
@@ -151,6 +223,12 @@ export function ScenarioWorkbench() {
                     triggered_by: label,
                     notes,
                     persist_opportunities: persistOpportunities,
+                    event_scenario: selectedShockKey === "none" ? undefined : {
+                      scenario_key: selectedShockKey,
+                      severity: shockSeverity,
+                      horizon: shockHorizon,
+                      confidence: shockConfidence,
+                    },
                     indicator_values: indicatorValues,
                   })
                 }
@@ -179,15 +257,24 @@ export function ScenarioWorkbench() {
                       <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Run Status</div>
                       <div className="mt-2 text-lg font-semibold">{mutation.data.status}</div>
                     </div>
-                    <div className="rounded-xl border border-border/70 bg-panel/70 p-4">
-                      <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Selected Regime</div>
-                      <div className="mt-2 text-lg font-semibold">
-                        {simulationStory?.regime_detected?.regime_name ?? (mutation.data.payload?.regime_results as any)?.selected_regime?.regime_name ?? "Unavailable"}
-                      </div>
-                      <div className="mt-2 text-sm text-muted-foreground">{simulationStory?.regime_detected?.summary ?? "No regime summary available yet."}</div>
+                  <div className="rounded-xl border border-border/70 bg-panel/70 p-4">
+                    <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Selected Regime</div>
+                    <div className="mt-2 text-lg font-semibold">
+                      {simulationStory?.regime_detected?.regime_name ?? (mutation.data.payload?.regime_results as any)?.selected_regime?.regime_name ?? "Unavailable"}
                     </div>
+                    <div className="mt-2 text-sm text-muted-foreground">{simulationStory?.regime_detected?.summary ?? "No regime summary available yet."}</div>
                   </div>
-                ) : (
+                  {simulationStory?.shock_scenario?.label ? (
+                    <div className="rounded-xl border border-border/70 bg-panel/70 p-4">
+                      <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Shock Layer Applied</div>
+                      <div className="mt-2 text-lg font-semibold">{simulationStory.shock_scenario.label}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        {simulationStory.shock_scenario.severity} severity over a {simulationStory.shock_scenario.horizon} horizon
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
                   <div className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
                     No simulation run yet. Edit the scenario and execute the backend engine.
                   </div>
@@ -208,6 +295,41 @@ export function ScenarioWorkbench() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Shock to Indicator Map</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-80">
+              <div className="space-y-4 pr-4">
+                <div className="rounded-xl border border-border/70 bg-panel/70 p-4">
+                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Shock Scenario</div>
+                  <div className="mt-2 text-lg font-semibold">{simulationStory?.shock_scenario?.label ?? "No shock overlay"}</div>
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    {(simulationStory?.shock_scenario?.channels ?? []).join(", ") || "Use an event shock to see transmission channels here."}
+                  </div>
+                </div>
+                {(simulationStory?.shock_scenario?.applied_impacts ?? []).map((impact) => (
+                  <div key={impact.indicator_code} className="rounded-xl border border-border/60 bg-panel/60 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-medium">{impact.indicator_code}</div>
+                      <div className="text-xs text-primary">signal {impact.signal_delta >= 0 ? "+" : ""}{impact.signal_delta.toFixed(2)}</div>
+                    </div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      Value shift {impact.value_delta >= 0 ? "+" : ""}{impact.value_delta.toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+                {!(simulationStory?.shock_scenario?.applied_impacts ?? []).length ? (
+                  <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
+                    Applied shock impacts will appear here once you run a simulation with an event overlay.
+                  </div>
+                ) : null}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Regime to Driver Map</CardTitle>

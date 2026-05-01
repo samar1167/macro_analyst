@@ -13,6 +13,7 @@ from apps.drivers.models import DerivedDriver
 from apps.engine.config.industry_playbooks import INDUSTRY_PLAYBOOKS
 from apps.engine.config.opportunity_playbooks import OPPORTUNITY_PLAYBOOKS
 from apps.engine.config.regime_profiles import REGIME_DRIVER_PROFILES
+from apps.engine.config.shock_scenarios import SHOCK_HORIZON_MULTIPLIERS, SHOCK_SCENARIOS
 from apps.engine.models import EngineRunAudit
 from apps.opportunities.models import Opportunity
 from apps.regimes.models import Regime
@@ -501,6 +502,69 @@ class OpportunityScoringEngine:
         return opportunities
 
 
+class ShockScenarioEngine:
+    def apply(
+        self,
+        indicator_values: dict[str, dict[str, Any]],
+        event_scenario: dict[str, Any] | None,
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, Any] | None]:
+        if not event_scenario or not event_scenario.get("scenario_key"):
+            return indicator_values, None
+
+        template = SHOCK_SCENARIOS.get(event_scenario["scenario_key"])
+        if not template:
+            return indicator_values, {
+                "scenario_key": event_scenario["scenario_key"],
+                "applied": False,
+                "message": "Unknown scenario key.",
+            }
+
+        severity = event_scenario.get("severity", "base")
+        horizon = event_scenario.get("horizon", "3m")
+        confidence = float(event_scenario.get("confidence", 0.8))
+        impacts = template["severity_impacts"][severity]
+        horizon_multipliers = SHOCK_HORIZON_MULTIPLIERS[horizon]
+
+        adjusted = {
+            code: dict(payload)
+            for code, payload in indicator_values.items()
+        }
+        applied_impacts = []
+        for code, impact in impacts.items():
+            if code not in adjusted:
+                continue
+            multiplier = horizon_multipliers.get(code, 1.0)
+            signal_delta = impact.get("signal_delta", 0.0) * multiplier * confidence
+            value_delta = impact.get("value_delta", 0.0) * multiplier * confidence
+            base_signal = float(adjusted[code].get("signal", 0.0) or 0.0)
+            base_value = adjusted[code].get("value")
+            adjusted[code]["signal"] = round(clamp(base_signal + signal_delta, -1.0, 1.0), 4)
+            if base_value is not None:
+                adjusted[code]["value"] = round(float(base_value) + value_delta, 4)
+            applied_impacts.append(
+                {
+                    "indicator_code": code,
+                    "signal_delta": round(signal_delta, 4),
+                    "value_delta": round(value_delta, 4),
+                    "resulting_signal": adjusted[code]["signal"],
+                    "resulting_value": adjusted[code].get("value"),
+                }
+            )
+
+        story = {
+            "scenario_key": event_scenario["scenario_key"],
+            "label": template["label"],
+            "description": template["description"],
+            "severity": severity,
+            "horizon": horizon,
+            "confidence": confidence,
+            "channels": template["channels"],
+            "applied_impacts": applied_impacts,
+            "applied": True,
+        }
+        return adjusted, story
+
+
 class SimulationNarrativeBuilder:
     @staticmethod
     def _dedupe(items: list[str]) -> list[str]:
@@ -516,6 +580,7 @@ class SimulationNarrativeBuilder:
     def build(
         self,
         *,
+        shock_story: dict[str, Any] | None,
         regime_results: dict[str, Any],
         driver_results: dict[str, dict[str, Any]],
         opportunities: list[dict[str, Any]],
@@ -625,13 +690,25 @@ class SimulationNarrativeBuilder:
             )
 
         reasoning_chain = [
+            *(
+                [{
+                    "stage": "shock_applied",
+                    "message": (
+                        f"{shock_story['label']} applied with {shock_story['severity']} severity over "
+                        f"a {shock_story['horizon']} horizon. Key channels: "
+                        f"{', '.join(shock_story['channels'][:3])}."
+                    ),
+                }]
+                if shock_story and shock_story.get("applied")
+                else []
+            ),
             {
                 "stage": "regime_detected",
                 "message": (
                     f"{selected_regime['regime_name']} selected with score "
                     f"{selected_regime['score']:.2f}."
                 ),
-            }
+            },
         ]
         reasoning_chain.extend(
             {
@@ -663,6 +740,7 @@ class SimulationNarrativeBuilder:
         )
 
         return {
+            "shock_scenario": shock_story,
             "regime_detected": {
                 "regime_code": selected_regime["regime_code"],
                 "regime_name": selected_regime["regime_name"],
@@ -681,6 +759,7 @@ class SimulationNarrativeBuilder:
 
 class MacroInferenceRuntime:
     def __init__(self):
+        self.shock_engine = ShockScenarioEngine()
         self.driver_engine = DerivedDriverComputationEngine()
         self.rule_engine = WeightedCausalPropagationEngine()
         self.divergence_engine = DivergenceScoringEngine()
@@ -696,22 +775,25 @@ class MacroInferenceRuntime:
         run_type: str,
         triggered_by: str,
         persist_opportunities: bool,
+        event_scenario: dict[str, Any] | None = None,
         notes: str = "",
     ) -> EngineRunAudit:
+        adjusted_indicator_values, shock_story = self.shock_engine.apply(indicator_values, event_scenario)
         audit = EngineRunAudit.objects.create(
             run_type=run_type,
             status=EngineRunAudit.Status.RUNNING,
             started_at=timezone.now(),
             triggered_by=triggered_by,
             payload={
-                "input_snapshot": indicator_values,
+                "input_snapshot": adjusted_indicator_values,
+                "event_scenario": event_scenario,
                 "notes": notes,
             },
             notes=notes,
         )
 
         try:
-            observations = IndicatorSignalNormalizer.normalize(indicator_values)
+            observations = IndicatorSignalNormalizer.normalize(adjusted_indicator_values)
             drivers = list(DerivedDriver.objects.filter(is_active=True).prefetch_related("indicators"))
             rules = list(
                 CausalRule.objects.filter(is_active=True)
@@ -741,6 +823,7 @@ class MacroInferenceRuntime:
                 persist=persist_opportunities,
             )
             simulation_story = self.narrative_builder.build(
+                shock_story=shock_story,
                 regime_results=regime_results,
                 driver_results=driver_results,
                 opportunities=opportunities,
@@ -765,6 +848,8 @@ class MacroInferenceRuntime:
                     }
                     for code, observation in observations.items()
                 },
+                "event_scenario": event_scenario,
+                "shock_story": shock_story,
                 "derived_driver_scores": driver_results,
                 "applied_rules": applied_rules,
                 "divergence_scores": divergence_results,

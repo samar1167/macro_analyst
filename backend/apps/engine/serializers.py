@@ -16,10 +16,11 @@ class ExecuteEngineRunSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True, default="")
     persist_opportunities = serializers.BooleanField(required=False, default=True)
     indicator_values = serializers.JSONField()
+    event_scenario = serializers.JSONField(required=False)
 
     def to_internal_value(self, data):
         if isinstance(data, dict) and "indicator_values" not in data:
-            known_fields = {"run_type", "triggered_by", "notes", "persist_opportunities"}
+            known_fields = {"run_type", "triggered_by", "notes", "persist_opportunities", "event_scenario"}
             indicator_values = {
                 key: value for key, value in data.items() if key not in known_fields
             }
@@ -45,4 +46,20 @@ class ExecuteEngineRunSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     f"{indicator_code} must include at least one of signal, change, zscore, or value."
                 )
+        return value
+
+    def validate_event_scenario(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("event_scenario must be an object.")
+
+        scenario_key = value.get("scenario_key")
+        severity = value.get("severity", "base")
+        horizon = value.get("horizon", "3m")
+
+        if scenario_key is not None and not isinstance(scenario_key, str):
+            raise serializers.ValidationError("event_scenario.scenario_key must be a string.")
+        if severity not in {"mild", "base", "severe"}:
+            raise serializers.ValidationError("event_scenario.severity must be one of mild, base, or severe.")
+        if horizon not in {"immediate", "3m", "12m"}:
+            raise serializers.ValidationError("event_scenario.horizon must be one of immediate, 3m, or 12m.")
         return value
