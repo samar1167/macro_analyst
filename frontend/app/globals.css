@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 208 44% 7%;
+  --foreground: 210 25% 92%;
+  --card: 212 34% 10%;
+  --card-foreground: 210 24% 94%;
+  --panel: 213 36% 12%;
+  --border: 215 22% 22%;
+  --input: 214 26% 17%;
+  --ring: 191 82% 58%;
+  --muted: 213 22% 16%;
+  --muted-foreground: 215 15% 68%;
+  --primary: 188 74% 59%;
+  --primary-foreground: 210 50% 6%;
+  --accent: 42 78% 58%;
+  --accent-foreground: 213 45% 10%;
+  --positive: 152 63% 53%;
+  --negative: 2 74% 62%;
+  --warning: 38 92% 58%;
+}
+
+* {
+  @apply border-border;
+}
+
+html,
+body {
+  @apply bg-background text-foreground antialiased;
+  background-image:
+    radial-gradient(circle at top left, rgba(35, 93, 108, 0.22), transparent 35%),
+    radial-gradient(circle at top right, rgba(144, 114, 35, 0.18), transparent 24%),
+    linear-gradient(180deg, rgba(3, 8, 16, 0.86), rgba(4, 12, 18, 0.98));
+  min-height: 100%;
+}
+
+body {
+  background-size: cover;
+}
+
+::selection {
+  background: rgba(94, 210, 228, 0.28);
+}
+
+.terminal-grid {
+  background-image:
+    linear-gradient(to right, rgba(74, 85, 104, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(74, 85, 104, 0.12) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.data-glow {
+  box-shadow: inset 0 0 0 1px rgba(120, 201, 217, 0.08), 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+}
