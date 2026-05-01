@@ -17,6 +17,23 @@ class ExecuteEngineRunSerializer(serializers.Serializer):
     persist_opportunities = serializers.BooleanField(required=False, default=True)
     indicator_values = serializers.JSONField()
 
+    def to_internal_value(self, data):
+        if isinstance(data, dict) and "indicator_values" not in data:
+            known_fields = {"run_type", "triggered_by", "notes", "persist_opportunities"}
+            indicator_values = {
+                key: value for key, value in data.items() if key not in known_fields
+            }
+            metadata = {
+                key: value for key, value in data.items() if key in known_fields
+            }
+            if indicator_values:
+                data = {
+                    **metadata,
+                    "indicator_values": indicator_values,
+                }
+
+        return super().to_internal_value(data)
+
     def validate_indicator_values(self, value):
         if not isinstance(value, dict) or not value:
             raise serializers.ValidationError("indicator_values must be a non-empty object keyed by indicator code.")

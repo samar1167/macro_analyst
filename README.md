@@ -60,7 +60,7 @@ cp frontend/.env.example frontend/.env
 ```env
 DEBUG=False
 SECRET_KEY=change-me
-ALLOWED_HOSTS=localhost,127.0.0.1
+ALLOWED_HOSTS=localhost,127.0.0.1,backend
 SQLITE_DB_NAME=db.sqlite3
 DJANGO_SUPERUSER_USERNAME=admin
 DJANGO_SUPERUSER_EMAIL=admin@example.com
@@ -119,6 +119,74 @@ docker compose exec backend python manage.py seed_generated_macro_knowledge
 ```bash
 docker compose down -v
 docker compose up --build
+```
+
+### Run The Backend Locally Outside Docker
+
+This is the easiest way to debug Django request handling with breakpoints.
+
+1. Create and activate a virtual environment:
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+2. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Stop the Docker backend first if it is already using port `8000`:
+
+```bash
+docker compose stop backend
+```
+
+4. Use the local debug env file:
+
+```bash
+set -a
+source .env.debug
+set +a
+```
+
+5. Run the normal bootstrap commands:
+
+```bash
+python manage.py migrate
+python manage.py collectstatic --noinput
+python manage.py ensure_admin_user
+python manage.py seed_generated_macro_knowledge
+```
+
+6. Start Django directly:
+
+```bash
+python manage.py runserver 8000
+```
+
+The API will be available at `http://localhost:8000/api/` and the admin at `http://localhost:8000/admin/`.
+
+If you want breakpoint debugging in VS Code, use the checked-in launch config:
+
+- `.vscode/launch.json`
+- Launch target: `Django: Runserver (backend/.env.debug)`
+
+Important note if the frontend is still running in Docker:
+
+- The frontend container cannot reach your host Django server through `http://backend:8000`.
+- For browser-side calls, hit `http://localhost:8000` directly, or run the frontend locally too.
+- If you want the frontend to call the host backend from a local frontend process, set `BACKEND_API_ORIGIN=http://localhost:8000` in `frontend/.env`.
+
+If you see `django.db.utils.OperationalError: attempt to write a readonly database` after switching from Docker to local Django, the SQLite file was likely created by the container user. Recreate a user-owned copy:
+
+```bash
+cp db.sqlite3 db.sqlite3.usercopy
+mv db.sqlite3 db.sqlite3.docker.bak
+mv db.sqlite3.usercopy db.sqlite3
 ```
 
 ### Common Verification Steps

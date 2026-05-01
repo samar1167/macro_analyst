@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Django: Runserver (backend/.env.debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "/home/samar/.pyenv/versions/3.10.17/envs/test/bin/python",
+      "program": "${workspaceFolder}/backend/manage.py",
+      "args": [
+        "runserver",
+        "8001"
+      ],
+      "django": true,
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/backend/.env.debug",
+      "justMyCode": true
+    }
+  ]
+}

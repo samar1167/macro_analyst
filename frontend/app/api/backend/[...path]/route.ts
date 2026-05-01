@@ -4,7 +4,9 @@ const backendOrigin = process.env.BACKEND_API_ORIGIN || "http://backend:8000";
 
 async function proxy(request: NextRequest, path: string[]) {
   const url = new URL(request.url);
-  const target = `${backendOrigin}/api/${path.join("/")}${url.search}`;
+  const normalizedPath = path.join("/");
+  const targetPath = normalizedPath.endsWith("/") ? normalizedPath : `${normalizedPath}/`;
+  const target = `${backendOrigin}/api/${targetPath}${url.search}`;
   const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.text();
 
   const response = await fetch(target, {
@@ -44,4 +46,3 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   const { path } = await context.params;
   return proxy(request, path);
 }
-

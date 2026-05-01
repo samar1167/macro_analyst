@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.causal_rules.models import CausalRule
 from apps.divergence.models import DivergencePattern
 from apps.drivers.models import DerivedDriver
+from apps.engine.config.industry_playbooks import INDUSTRY_PLAYBOOKS
 from apps.engine.config.opportunity_playbooks import OPPORTUNITY_PLAYBOOKS
 from apps.engine.config.regime_profiles import REGIME_DRIVER_PROFILES
 from apps.engine.models import EngineRunAudit
@@ -500,6 +501,184 @@ class OpportunityScoringEngine:
         return opportunities
 
 
+class SimulationNarrativeBuilder:
+    @staticmethod
+    def _dedupe(items: list[str]) -> list[str]:
+        seen = set()
+        result = []
+        for item in items:
+            if item in seen:
+                continue
+            seen.add(item)
+            result.append(item)
+        return result
+
+    def build(
+        self,
+        *,
+        regime_results: dict[str, Any],
+        driver_results: dict[str, dict[str, Any]],
+        opportunities: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        selected_regime = regime_results.get("selected_regime")
+        if not selected_regime:
+            return {
+                "regime_detected": None,
+                "key_drivers_identified": [],
+                "industry_effects_mapped": {
+                    "outperformers": [],
+                    "underperformers": [],
+                    "transmission_channels": [],
+                },
+                "opportunities_generated": [],
+                "reasoning_chain": [],
+            }
+
+        top_driver_contributions = sorted(
+            selected_regime.get("driver_contributions", []),
+            key=lambda item: abs(item["contribution"]),
+            reverse=True,
+        )[:3]
+
+        key_drivers = []
+        for contribution in top_driver_contributions:
+            driver_result = driver_results.get(contribution["driver_code"], {})
+            key_drivers.append(
+                {
+                    "driver_code": contribution["driver_code"],
+                    "driver_name": contribution["driver_name"],
+                    "net_score": contribution["net_score"],
+                    "desired_direction": contribution["desired_direction"],
+                    "contribution": contribution["contribution"],
+                    "explanation_trace": driver_result.get("explanation_trace", []),
+                }
+            )
+
+        playbook = INDUSTRY_PLAYBOOKS.get(selected_regime["regime_code"], {})
+        outperformers = list(playbook.get("outperformers", []))
+        underperformers = list(playbook.get("underperformers", []))
+        channels = list(playbook.get("channels", []))
+        driver_overrides = playbook.get("driver_overrides", {})
+
+        driver_industry_links = []
+        for driver in key_drivers:
+            override = driver_overrides.get(driver["driver_code"], {})
+            outperformers.extend(override.get("outperformers", []))
+            underperformers.extend(override.get("underperformers", []))
+            channels.extend(override.get("channels", []))
+            driver_industry_links.append(
+                {
+                    "driver_code": driver["driver_code"],
+                    "driver_name": driver["driver_name"],
+                    "outperformers": override.get("outperformers", []),
+                    "underperformers": override.get("underperformers", []),
+                    "channels": override.get("channels", []),
+                }
+            )
+
+        industry_effects = {
+            "outperformers": self._dedupe(outperformers),
+            "underperformers": self._dedupe(underperformers),
+            "transmission_channels": self._dedupe(channels),
+            "driver_links": driver_industry_links,
+        }
+
+        opportunity_summaries = []
+        for opportunity in opportunities:
+            supporting_driver_code = opportunity["explanation_trace"]["driver"]["driver_code"]
+            supporting_driver_name = opportunity["explanation_trace"]["driver"]["driver_name"]
+            driver_link = next(
+                (
+                    link
+                    for link in driver_industry_links
+                    if link["driver_code"] == supporting_driver_code
+                ),
+                None,
+            )
+            beneficiary_industries = self._dedupe(
+                (driver_link.get("outperformers", []) if driver_link else [])
+                + industry_effects["outperformers"][:4]
+            )[:6]
+            explanation = (
+                f"{opportunity['title']} fits a {selected_regime['regime_name']} setup because "
+                f"{supporting_driver_name.lower()} is reinforcing the regime signal."
+            )
+            if driver_link and driver_link.get("channels"):
+                explanation = f"{explanation} {driver_link['channels'][0]}"
+            if beneficiary_industries:
+                explanation = (
+                    f"{explanation} Industries most likely to benefit include "
+                    f"{', '.join(beneficiary_industries[:3])}."
+                )
+
+            opportunity_summaries.append(
+                {
+                    "code": opportunity["code"],
+                    "title": opportunity["title"],
+                    "direction": opportunity["direction"],
+                    "status": opportunity["status"],
+                    "conviction_score": opportunity["conviction_score"],
+                    "supporting_driver": supporting_driver_name,
+                    "brief_explanation": explanation,
+                    "beneficiary_industries": beneficiary_industries,
+                }
+            )
+
+        reasoning_chain = [
+            {
+                "stage": "regime_detected",
+                "message": (
+                    f"{selected_regime['regime_name']} selected with score "
+                    f"{selected_regime['score']:.2f}."
+                ),
+            }
+        ]
+        reasoning_chain.extend(
+            {
+                "stage": "key_driver_identified",
+                "message": (
+                    f"{driver['driver_name']} contributed {driver['contribution']:.2f} "
+                    f"with net score {driver['net_score']:.2f}."
+                ),
+            }
+            for driver in key_drivers
+        )
+        reasoning_chain.append(
+            {
+                "stage": "industry_effects_mapped",
+                "message": (
+                    f"Likely outperformers: {', '.join(industry_effects['outperformers'][:5]) or 'none'}. "
+                    f"Likely underperformers: {', '.join(industry_effects['underperformers'][:5]) or 'none'}."
+                ),
+            }
+        )
+        reasoning_chain.append(
+            {
+                "stage": "opportunities_generated",
+                "message": (
+                    f"Generated {len(opportunity_summaries)} opportunity ideas from the "
+                    f"{selected_regime['regime_name']} setup."
+                ),
+            }
+        )
+
+        return {
+            "regime_detected": {
+                "regime_code": selected_regime["regime_code"],
+                "regime_name": selected_regime["regime_name"],
+                "score": selected_regime["score"],
+                "regime_type": selected_regime["regime_type"],
+                "summary": selected_regime["explanation_trace"][0]["message"]
+                if selected_regime.get("explanation_trace")
+                else "",
+            },
+            "key_drivers_identified": key_drivers,
+            "industry_effects_mapped": industry_effects,
+            "opportunities_generated": opportunity_summaries,
+            "reasoning_chain": reasoning_chain,
+        }
+
+
 class MacroInferenceRuntime:
     def __init__(self):
         self.driver_engine = DerivedDriverComputationEngine()
@@ -507,6 +686,7 @@ class MacroInferenceRuntime:
         self.divergence_engine = DivergenceScoringEngine()
         self.regime_engine = RegimeClassificationEngine()
         self.opportunity_engine = OpportunityScoringEngine()
+        self.narrative_builder = SimulationNarrativeBuilder()
 
     @transaction.atomic
     def execute(
@@ -560,6 +740,11 @@ class MacroInferenceRuntime:
                 divergence_results=divergence_results,
                 persist=persist_opportunities,
             )
+            simulation_story = self.narrative_builder.build(
+                regime_results=regime_results,
+                driver_results=driver_results,
+                opportunities=opportunities,
+            )
 
             selected_regime = regime_results.get("selected_regime")
             audit.regime_id = selected_regime["regime_id"] if selected_regime else None
@@ -584,6 +769,7 @@ class MacroInferenceRuntime:
                 "applied_rules": applied_rules,
                 "divergence_scores": divergence_results,
                 "regime_results": regime_results,
+                "simulation_story": simulation_story,
                 "opportunities": opportunities,
                 "summary": {
                     "selected_regime": selected_regime["regime_code"] if selected_regime else None,

@@ -9,9 +9,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export function ReasoningPanel({
   title,
   items,
+  heightClass = "max-h-64",
 }: {
   title: string;
   items: { stage?: string; message: string }[];
+  heightClass?: string;
 }) {
   return (
     <Collapsible defaultOpen>
@@ -24,7 +26,7 @@ export function ReasoningPanel({
         </CardHeader>
         <CollapsibleContent>
           <CardContent>
-            <ScrollArea className="max-h-64">
+            <ScrollArea className={heightClass}>
               <div className="space-y-3 pr-4">
                 {items.map((item, index) => (
                   <div key={`${item.message}-${index}`} className="rounded-xl border border-border/60 bg-panel/60 p-3">
@@ -42,4 +44,3 @@ export function ReasoningPanel({
     </Collapsible>
   );
 }
-
