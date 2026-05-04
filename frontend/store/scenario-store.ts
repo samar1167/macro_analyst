@@ -37,6 +37,21 @@ export const eventScenarioPresets = [
     label: "Banking Stress Event",
     description: "Credit tightening and confidence shock through spreads and funding stress.",
   },
+  {
+    key: "ceasefire-energy-relief",
+    label: "Ceasefire / Energy Relief",
+    description: "Lower energy risk premium, easier credit, firmer growth confidence, and a softer dollar.",
+  },
+  {
+    key: "productivity-boom",
+    label: "Productivity / AI Upside Shock",
+    description: "Better growth, improving investment sentiment, and lower inflation persistence.",
+  },
+  {
+    key: "policy-easing-tailwind",
+    label: "Policy Easing / Liquidity Tailwind",
+    description: "Easier financial conditions, narrower spreads, and improved growth expectations.",
+  },
 ] as const;
 
 type ScenarioStore = {
@@ -141,7 +156,7 @@ export const scenarioPresets: ScenarioPreset[] = [
 export const useScenarioStore = create<ScenarioStore>((set) => ({
   label: "Base Stress Case",
   notes: "Scenario editing workspace for macro simulation.",
-  persistOpportunities: true,
+  persistOpportunities: false,
   indicatorValues: initialIndicatorValues,
   setScenarioMeta: (payload) => set((state) => ({ ...state, ...payload })),
   setIndicatorValue: (code, payload) =>
@@ -155,7 +170,7 @@ export const useScenarioStore = create<ScenarioStore>((set) => ({
     set({
       label: "Base Stress Case",
       notes: "Scenario editing workspace for macro simulation.",
-      persistOpportunities: true,
+      persistOpportunities: false,
       indicatorValues: initialIndicatorValues,
     }),
 }));

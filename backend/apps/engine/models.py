@@ -16,6 +16,7 @@ class EngineRunAudit(TimeStampedModel):
     started_at = models.DateTimeField()
     completed_at = models.DateTimeField(null=True, blank=True)
     triggered_by = models.CharField(max_length=255, blank=True)
+    simulation_label = models.CharField(max_length=255, blank=True)
     regime = models.ForeignKey(
         Regime,
         related_name="engine_run_audits",
@@ -30,5 +31,6 @@ class EngineRunAudit(TimeStampedModel):
         ordering = ["-started_at"]
 
     def __str__(self):
+        if self.simulation_label:
+            return f"{self.simulation_label} - {self.status}"
         return f"{self.run_type} - {self.status}"
-

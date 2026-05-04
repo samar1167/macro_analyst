@@ -13,6 +13,7 @@ class EngineRunAuditSerializer(serializers.ModelSerializer):
 class ExecuteEngineRunSerializer(serializers.Serializer):
     run_type = serializers.CharField(required=False, default="macro_inference")
     triggered_by = serializers.CharField(required=False, allow_blank=True, default="api")
+    simulation_label = serializers.CharField(required=False, allow_blank=True, default="")
     notes = serializers.CharField(required=False, allow_blank=True, default="")
     persist_opportunities = serializers.BooleanField(required=False, default=True)
     indicator_values = serializers.JSONField()
@@ -20,7 +21,7 @@ class ExecuteEngineRunSerializer(serializers.Serializer):
 
     def to_internal_value(self, data):
         if isinstance(data, dict) and "indicator_values" not in data:
-            known_fields = {"run_type", "triggered_by", "notes", "persist_opportunities", "event_scenario"}
+            known_fields = {"run_type", "triggered_by", "simulation_label", "notes", "persist_opportunities", "event_scenario"}
             indicator_values = {
                 key: value for key, value in data.items() if key not in known_fields
             }
@@ -33,7 +34,10 @@ class ExecuteEngineRunSerializer(serializers.Serializer):
                     "indicator_values": indicator_values,
                 }
 
-        return super().to_internal_value(data)
+        internal = super().to_internal_value(data)
+        if not internal.get("simulation_label") and internal.get("triggered_by") not in {"", "api"}:
+            internal["simulation_label"] = internal["triggered_by"]
+        return internal
 
     def validate_indicator_values(self, value):
         if not isinstance(value, dict) or not value:

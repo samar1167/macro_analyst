@@ -142,6 +142,7 @@ export interface EngineRunAudit {
   started_at: string;
   completed_at: string | null;
   triggered_by: string;
+  simulation_label?: string;
   regime: number | null;
   payload: Record<string, any>;
   notes: string;
@@ -151,6 +152,7 @@ export interface EngineRunAudit {
 export interface EngineExecutionInput {
   run_type?: string;
   triggered_by?: string;
+  simulation_label?: string;
   notes?: string;
   persist_opportunities?: boolean;
   event_scenario?: {

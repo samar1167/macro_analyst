@@ -128,4 +128,101 @@ SHOCK_SCENARIOS = {
             },
         },
     },
+    "ceasefire-energy-relief": {
+        "label": "Ceasefire / Energy Relief",
+        "description": "Models a positive geopolitical de-escalation through lower energy pressure, narrower spreads, and firmer growth confidence.",
+        "channels": [
+            "Lower commodity and energy risk premium",
+            "Improved risk appetite and easier financial conditions",
+            "Better supply-chain confidence and steadier manufacturing activity",
+            "Less safe-haven demand for the dollar",
+        ],
+        "severity_impacts": {
+            "mild": {
+                "CORE_PCE_YOY": {"signal_delta": -0.15, "value_delta": -0.10},
+                "UNEMP_RATE": {"signal_delta": -0.05, "value_delta": -0.02},
+                "ISM_MFG_PMI": {"signal_delta": 0.15, "value_delta": 0.80},
+                "HY_OAS": {"signal_delta": -0.20, "value_delta": -20.0},
+                "DXY": {"signal_delta": -0.10, "value_delta": -0.80},
+            },
+            "base": {
+                "CORE_PCE_YOY": {"signal_delta": -0.30, "value_delta": -0.20},
+                "UNEMP_RATE": {"signal_delta": -0.10, "value_delta": -0.05},
+                "ISM_MFG_PMI": {"signal_delta": 0.35, "value_delta": 1.80},
+                "HY_OAS": {"signal_delta": -0.45, "value_delta": -45.0},
+                "DXY": {"signal_delta": -0.20, "value_delta": -1.60},
+            },
+            "severe": {
+                "CORE_PCE_YOY": {"signal_delta": -0.45, "value_delta": -0.35},
+                "UNEMP_RATE": {"signal_delta": -0.20, "value_delta": -0.12},
+                "ISM_MFG_PMI": {"signal_delta": 0.55, "value_delta": 3.00},
+                "HY_OAS": {"signal_delta": -0.65, "value_delta": -75.0},
+                "DXY": {"signal_delta": -0.35, "value_delta": -2.80},
+            },
+        },
+    },
+    "productivity-boom": {
+        "label": "Productivity / AI Upside Shock",
+        "description": "Models a positive supply-side shock through stronger growth, better margins, and lower inflation pressure.",
+        "channels": [
+            "Stronger growth with better supply efficiency",
+            "Margin support and improved investment sentiment",
+            "Lower inflation persistence from productivity gains",
+        ],
+        "severity_impacts": {
+            "mild": {
+                "CORE_PCE_YOY": {"signal_delta": -0.10, "value_delta": -0.08},
+                "UNEMP_RATE": {"signal_delta": -0.05, "value_delta": -0.03},
+                "ISM_MFG_PMI": {"signal_delta": 0.20, "value_delta": 0.90},
+                "HY_OAS": {"signal_delta": -0.15, "value_delta": -15.0},
+                "DXY": {"signal_delta": -0.05, "value_delta": -0.40},
+            },
+            "base": {
+                "CORE_PCE_YOY": {"signal_delta": -0.25, "value_delta": -0.18},
+                "UNEMP_RATE": {"signal_delta": -0.10, "value_delta": -0.06},
+                "ISM_MFG_PMI": {"signal_delta": 0.45, "value_delta": 2.20},
+                "HY_OAS": {"signal_delta": -0.30, "value_delta": -35.0},
+                "DXY": {"signal_delta": -0.10, "value_delta": -0.90},
+            },
+            "severe": {
+                "CORE_PCE_YOY": {"signal_delta": -0.40, "value_delta": -0.30},
+                "UNEMP_RATE": {"signal_delta": -0.20, "value_delta": -0.12},
+                "ISM_MFG_PMI": {"signal_delta": 0.65, "value_delta": 3.80},
+                "HY_OAS": {"signal_delta": -0.45, "value_delta": -60.0},
+                "DXY": {"signal_delta": -0.15, "value_delta": -1.30},
+            },
+        },
+    },
+    "policy-easing-tailwind": {
+        "label": "Policy Easing / Liquidity Tailwind",
+        "description": "Models a positive policy pivot through easier financial conditions, narrower spreads, and improving growth expectations.",
+        "channels": [
+            "Looser financial conditions and lower discount pressure",
+            "Narrower credit spreads and better risk appetite",
+            "Improved activity expectations with less dollar tightness",
+        ],
+        "severity_impacts": {
+            "mild": {
+                "CORE_PCE_YOY": {"signal_delta": -0.05, "value_delta": -0.03},
+                "UNEMP_RATE": {"signal_delta": -0.03, "value_delta": -0.02},
+                "ISM_MFG_PMI": {"signal_delta": 0.15, "value_delta": 0.70},
+                "HY_OAS": {"signal_delta": -0.20, "value_delta": -20.0},
+                "DXY": {"signal_delta": -0.15, "value_delta": -1.00},
+            },
+            "base": {
+                "CORE_PCE_YOY": {"signal_delta": -0.10, "value_delta": -0.08},
+                "UNEMP_RATE": {"signal_delta": -0.08, "value_delta": -0.05},
+                "ISM_MFG_PMI": {"signal_delta": 0.30, "value_delta": 1.60},
+                "HY_OAS": {"signal_delta": -0.40, "value_delta": -45.0},
+                "DXY": {"signal_delta": -0.25, "value_delta": -1.90},
+            },
+            "severe": {
+                "CORE_PCE_YOY": {"signal_delta": -0.18, "value_delta": -0.12},
+                "UNEMP_RATE": {"signal_delta": -0.15, "value_delta": -0.10},
+                "ISM_MFG_PMI": {"signal_delta": 0.50, "value_delta": 3.00},
+                "HY_OAS": {"signal_delta": -0.60, "value_delta": -75.0},
+                "DXY": {"signal_delta": -0.35, "value_delta": -3.10},
+            },
+        },
+    },
 }

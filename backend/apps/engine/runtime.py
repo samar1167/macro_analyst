@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.causal_rules.models import CausalRule
 from apps.divergence.models import DivergencePattern
 from apps.drivers.models import DerivedDriver
+from apps.engine.config.country_fallout import COUNTRY_FALLOUT_PROFILES, US_REGIME_GLOBAL_CHANNELS
 from apps.engine.config.industry_playbooks import INDUSTRY_PLAYBOOKS
 from apps.engine.config.opportunity_playbooks import OPPORTUNITY_PLAYBOOKS
 from apps.engine.config.regime_profiles import REGIME_DRIVER_PROFILES
@@ -565,6 +566,204 @@ class ShockScenarioEngine:
         return adjusted, story
 
 
+class CountryFalloutEngine:
+    @staticmethod
+    def _dedupe(items: list[str]) -> list[str]:
+        seen = set()
+        result = []
+        for item in items:
+            if item in seen:
+                continue
+            seen.add(item)
+            result.append(item)
+        return result
+
+    @staticmethod
+    def _channel_label(channel_code: str) -> str:
+        labels = {
+            "USD_DIRECTION": "the U.S. dollar",
+            "OIL_PRESSURE": "oil prices",
+            "GLOBAL_GROWTH": "global growth",
+            "CREDIT_STRESS": "global credit conditions",
+            "RISK_APPETITE": "global investor risk appetite",
+            "US_YIELDS": "U.S. bond yields",
+        }
+        return labels.get(channel_code, channel_code.replace("_", " ").lower())
+
+    @staticmethod
+    def _channel_direction_text(channel_code: str, channel_value: float) -> str:
+        if channel_code == "USD_DIRECTION":
+            return "is strengthening" if channel_value >= 0 else "is easing"
+        if channel_code == "OIL_PRESSURE":
+            return "are rising" if channel_value >= 0 else "are cooling"
+        if channel_code == "GLOBAL_GROWTH":
+            return "is improving" if channel_value >= 0 else "is slowing"
+        if channel_code == "CREDIT_STRESS":
+            return "are tightening" if channel_value >= 0 else "are easing"
+        if channel_code == "RISK_APPETITE":
+            return "is improving" if channel_value >= 0 else "is weakening"
+        if channel_code == "US_YIELDS":
+            return "are moving higher" if channel_value >= 0 else "are easing"
+        return "is moving up" if channel_value >= 0 else "is moving down"
+
+    def _build_impact_reason(self, *, impact_label: str, contributor: dict[str, Any]) -> str:
+        channel_label = self._channel_label(contributor["channel_code"])
+        direction_text = self._channel_direction_text(
+            contributor["channel_code"],
+            float(contributor["channel_value"]),
+        )
+        reason_templates = {
+            "Imported Inflation": f"{channel_label.capitalize()} {direction_text}, which can make imported goods and energy more expensive in India.",
+            "USD/INR Pressure": f"{channel_label.capitalize()} {direction_text}, which can put pressure on the rupee against the dollar.",
+            "FII Flow Pressure": f"{channel_label.capitalize()} {direction_text}, which can make foreign investors more cautious about Indian markets.",
+            "Export Demand": f"{channel_label.capitalize()} {direction_text}, which can change demand for Indian exports and offshore services.",
+            "Domestic Growth Resilience": f"{channel_label.capitalize()} {direction_text}, which can change how much support India gets from global and domestic activity.",
+            "RBI Rate Pressure": f"{channel_label.capitalize()} {direction_text}, which can affect how much pressure the RBI faces to keep policy tight.",
+        }
+        return reason_templates.get(
+            impact_label,
+            f"{channel_label.capitalize()} {direction_text}, which can influence {impact_label.lower()} in India.",
+        )
+
+    def evaluate(
+        self,
+        *,
+        selected_regime: dict[str, Any] | None,
+        country_code: str = "INDIA",
+    ) -> dict[str, Any] | None:
+        if not selected_regime:
+            return None
+
+        global_channels = US_REGIME_GLOBAL_CHANNELS.get(selected_regime["regime_code"])
+        country_profile = COUNTRY_FALLOUT_PROFILES.get(country_code)
+        if not global_channels or not country_profile:
+            return None
+
+        macro_impacts: dict[str, float] = {}
+        impact_contributors: dict[str, list[dict[str, Any]]] = {}
+        transmission_map = []
+        for channel_code, channel_value in global_channels.items():
+            sensitivities = country_profile["sensitivities"].get(channel_code, {})
+            linked_impacts = []
+            for impact_code, weight in sensitivities.items():
+                contribution = channel_value * weight
+                macro_impacts[impact_code] = macro_impacts.get(impact_code, 0.0) + contribution
+                impact_contributors.setdefault(impact_code, []).append(
+                    {
+                        "channel_code": channel_code,
+                        "channel_value": round(channel_value, 4),
+                        "weight": round(weight, 4),
+                        "contribution": round(contribution, 4),
+                    }
+                )
+                linked_impacts.append(
+                    {
+                        "impact_code": impact_code,
+                        "impact_label": country_profile["impact_labels"][impact_code],
+                        "weight": round(weight, 4),
+                        "contribution": round(contribution, 4),
+                    }
+                )
+            transmission_map.append(
+                {
+                    "channel_code": channel_code,
+                    "channel_value": round(channel_value, 4),
+                    "linked_impacts": linked_impacts,
+                }
+            )
+
+        ranked_impacts = sorted(
+            (
+                {
+                    "impact_code": code,
+                    "impact_label": country_profile["impact_labels"][code],
+                    "score": round(score, 4),
+                    "reasons": [
+                        self._build_impact_reason(
+                            impact_label=country_profile["impact_labels"][code],
+                            contributor=item,
+                        )
+                        for item in sorted(
+                            impact_contributors.get(code, []),
+                            key=lambda contributor: abs(contributor["contribution"]),
+                            reverse=True,
+                        )[:2]
+                    ],
+                }
+                for code, score in macro_impacts.items()
+            ),
+            key=lambda item: abs(item["score"]),
+            reverse=True,
+        )
+
+        positive_sectors = []
+        negative_sectors = []
+        for impact in ranked_impacts[:3]:
+            sector_map = country_profile["sector_map"]
+            if impact["score"] >= 0:
+                negative_sectors.extend(sector_map["negative"].get(impact["impact_code"], []))
+                positive_sectors.extend(sector_map["positive"].get(impact["impact_code"], []))
+            else:
+                positive_sectors.extend(sector_map["negative"].get(impact["impact_code"], []))
+                negative_sectors.extend(sector_map["positive"].get(impact["impact_code"], []))
+
+        positive_sectors = self._dedupe(positive_sectors)
+        negative_sectors = self._dedupe(negative_sectors)
+
+        opportunity_templates = country_profile["opportunity_templates"]
+        opportunity_bias = "negative" if sum(item["score"] for item in ranked_impacts[:3]) >= 0 else "positive"
+        opportunities = opportunity_templates[opportunity_bias]
+
+        interpretation_reasons = []
+        for impact in ranked_impacts[:3]:
+            if impact["score"] >= 0.2:
+                direction = "is rising"
+                sector_hint = negative_sectors[:2]
+            elif impact["score"] <= -0.2:
+                direction = "is easing"
+                sector_hint = positive_sectors[:2]
+            else:
+                direction = "is mixed"
+                sector_hint = []
+
+            reason = f"{impact['impact_label']} {direction}"
+            if sector_hint:
+                reason = f"{reason}, which matters for {', '.join(sector_hint)}."
+            interpretation_reasons.append(reason)
+
+        if ranked_impacts:
+            top_effect = ranked_impacts[0]
+            if top_effect["score"] >= 0.35:
+                outlook = "Headwind"
+            elif top_effect["score"] <= -0.35:
+                outlook = "Tailwind"
+            else:
+                outlook = "Mixed"
+        else:
+            outlook = "Mixed"
+
+        return {
+            "country_code": country_code,
+            "country_label": country_profile["label"],
+            "outlook": outlook,
+            "global_channels": [
+                {
+                    "channel_code": code,
+                    "score": round(value, 4),
+                }
+                for code, value in global_channels.items()
+            ],
+            "transmission_map": transmission_map,
+            "macro_impacts": ranked_impacts,
+            "sector_effects": {
+                "beneficiaries": positive_sectors[:8],
+                "headwinds": negative_sectors[:8],
+            },
+            "interpretation_reasons": interpretation_reasons,
+            "opportunities": opportunities,
+        }
+
+
 class SimulationNarrativeBuilder:
     @staticmethod
     def _dedupe(items: list[str]) -> list[str]:
@@ -581,6 +780,7 @@ class SimulationNarrativeBuilder:
         self,
         *,
         shock_story: dict[str, Any] | None,
+        country_fallout: dict[str, Any] | None,
         regime_results: dict[str, Any],
         driver_results: dict[str, dict[str, Any]],
         opportunities: list[dict[str, Any]],
@@ -595,6 +795,7 @@ class SimulationNarrativeBuilder:
                     "underperformers": [],
                     "transmission_channels": [],
                 },
+                "country_fallout": None,
                 "opportunities_generated": [],
                 "reasoning_chain": [],
             }
@@ -738,6 +939,17 @@ class SimulationNarrativeBuilder:
                 ),
             }
         )
+        if country_fallout:
+            reasoning_chain.append(
+                {
+                    "stage": "india_fallout",
+                    "message": (
+                        f"{country_fallout['country_label']} fallout looks {country_fallout['outlook'].lower()} "
+                        f"with top macro pressure from "
+                        f"{', '.join(item['impact_label'] for item in country_fallout['macro_impacts'][:3])}."
+                    ),
+                }
+            )
 
         return {
             "shock_scenario": shock_story,
@@ -752,6 +964,7 @@ class SimulationNarrativeBuilder:
             },
             "key_drivers_identified": key_drivers,
             "industry_effects_mapped": industry_effects,
+            "country_fallout": country_fallout,
             "opportunities_generated": opportunity_summaries,
             "reasoning_chain": reasoning_chain,
         }
@@ -765,6 +978,7 @@ class MacroInferenceRuntime:
         self.divergence_engine = DivergenceScoringEngine()
         self.regime_engine = RegimeClassificationEngine()
         self.opportunity_engine = OpportunityScoringEngine()
+        self.country_fallout_engine = CountryFalloutEngine()
         self.narrative_builder = SimulationNarrativeBuilder()
 
     @transaction.atomic
@@ -774,6 +988,7 @@ class MacroInferenceRuntime:
         indicator_values: dict[str, dict[str, Any]],
         run_type: str,
         triggered_by: str,
+        simulation_label: str = "",
         persist_opportunities: bool,
         event_scenario: dict[str, Any] | None = None,
         notes: str = "",
@@ -784,9 +999,11 @@ class MacroInferenceRuntime:
             status=EngineRunAudit.Status.RUNNING,
             started_at=timezone.now(),
             triggered_by=triggered_by,
+            simulation_label=simulation_label or triggered_by,
             payload={
                 "input_snapshot": adjusted_indicator_values,
                 "event_scenario": event_scenario,
+                "simulation_label": simulation_label or triggered_by,
                 "notes": notes,
             },
             notes=notes,
@@ -822,14 +1039,19 @@ class MacroInferenceRuntime:
                 divergence_results=divergence_results,
                 persist=persist_opportunities,
             )
+            selected_regime = regime_results.get("selected_regime")
+            india_fallout = self.country_fallout_engine.evaluate(
+                selected_regime=selected_regime,
+                country_code="INDIA",
+            )
             simulation_story = self.narrative_builder.build(
                 shock_story=shock_story,
+                country_fallout=india_fallout,
                 regime_results=regime_results,
                 driver_results=driver_results,
                 opportunities=opportunities,
             )
 
-            selected_regime = regime_results.get("selected_regime")
             audit.regime_id = selected_regime["regime_id"] if selected_regime else None
             audit.status = EngineRunAudit.Status.SUCCESS
             audit.completed_at = timezone.now()
@@ -849,12 +1071,14 @@ class MacroInferenceRuntime:
                     for code, observation in observations.items()
                 },
                 "event_scenario": event_scenario,
+                "simulation_label": audit.simulation_label,
                 "shock_story": shock_story,
                 "derived_driver_scores": driver_results,
                 "applied_rules": applied_rules,
                 "divergence_scores": divergence_results,
                 "regime_results": regime_results,
                 "simulation_story": simulation_story,
+                "country_fallout": india_fallout,
                 "opportunities": opportunities,
                 "summary": {
                     "selected_regime": selected_regime["regime_code"] if selected_regime else None,

@@ -13,6 +13,37 @@ import { Textarea } from "@/components/ui/textarea";
 import { useEngineExecution } from "@/hooks/use-platform-data";
 import { eventScenarioPresets, scenarioPresets, useScenarioStore } from "@/store/scenario-store";
 
+const INDIA_CHANNEL_LABELS: Record<string, string> = {
+  USD_DIRECTION: "U.S. dollar",
+  OIL_PRESSURE: "Oil prices",
+  GLOBAL_GROWTH: "Global growth",
+  CREDIT_STRESS: "Credit conditions",
+  RISK_APPETITE: "Investor risk appetite",
+  US_YIELDS: "U.S. bond yields",
+};
+
+function describeIndiaChannel(code: string, score: number) {
+  if (code === "USD_DIRECTION") {
+    return score >= 0 ? "The U.S. dollar is getting stronger." : "The U.S. dollar is easing.";
+  }
+  if (code === "OIL_PRESSURE") {
+    return score >= 0 ? "Oil prices are moving higher." : "Oil prices are cooling.";
+  }
+  if (code === "GLOBAL_GROWTH") {
+    return score >= 0 ? "Global growth is improving." : "Global growth is slowing.";
+  }
+  if (code === "CREDIT_STRESS") {
+    return score >= 0 ? "Credit conditions are getting tighter." : "Credit conditions are easing.";
+  }
+  if (code === "RISK_APPETITE") {
+    return score >= 0 ? "Investor appetite for risk is improving." : "Investor appetite for risk is weakening.";
+  }
+  if (code === "US_YIELDS") {
+    return score >= 0 ? "U.S. bond yields are moving higher." : "U.S. bond yields are easing.";
+  }
+  return `${INDIA_CHANNEL_LABELS[code] ?? code} is shifting.`;
+}
+
 export function ScenarioWorkbench() {
   const { label, notes, persistOpportunities, indicatorValues, resetScenario, setIndicatorValue, setScenarioMeta } = useScenarioStore();
   const mutation = useEngineExecution();
@@ -35,6 +66,26 @@ export function ScenarioWorkbench() {
             signal_delta: number;
             value_delta: number;
           }[];
+        };
+        country_fallout?: {
+          country_label?: string;
+          outlook?: string;
+          global_channels?: {
+            channel_code: string;
+            score: number;
+          }[];
+          macro_impacts?: {
+            impact_code: string;
+            impact_label: string;
+            score: number;
+            reasons?: string[];
+          }[];
+          sector_effects?: {
+            beneficiaries?: string[];
+            headwinds?: string[];
+          };
+          interpretation_reasons?: string[];
+          opportunities?: string[];
         };
         regime_detected?: {
           regime_name?: string;
@@ -65,6 +116,31 @@ export function ScenarioWorkbench() {
         reasoning_chain?: { stage?: string; message: string }[];
       }
     | undefined;
+  const selectedRegimeCode = (mutation.data?.payload?.regime_results as any)?.selected_regime?.regime_code as string | undefined;
+  const positiveRegimes = new Set(["REG_GOLDILOCKS", "REG_REFLATION"]);
+  const negativeRegimes = new Set(["REG_HARD_LANDING", "REG_STAGFLATION", "REG_DISINFLATION_SLOWDOWN"]);
+  const regimeCardClass = positiveRegimes.has(selectedRegimeCode ?? "")
+    ? "rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+    : negativeRegimes.has(selectedRegimeCode ?? "")
+      ? "rounded-xl border border-rose-200 bg-rose-50 p-4"
+      : "rounded-xl border border-border/70 bg-panel/70 p-4";
+  const regimeTitleClass = positiveRegimes.has(selectedRegimeCode ?? "")
+    ? "mt-2 text-lg font-semibold text-emerald-950"
+    : negativeRegimes.has(selectedRegimeCode ?? "")
+      ? "mt-2 text-lg font-semibold text-rose-950"
+      : "mt-2 text-lg font-semibold";
+  const regimeBodyClass = positiveRegimes.has(selectedRegimeCode ?? "")
+    ? "mt-2 text-sm text-emerald-900"
+    : negativeRegimes.has(selectedRegimeCode ?? "")
+      ? "mt-2 text-sm text-rose-900"
+      : "mt-2 text-sm text-muted-foreground";
+  const shockIsPositive = new Set(["ceasefire-energy-relief", "productivity-boom", "policy-easing-tailwind"]).has(selectedShockKey);
+  const shockIsNegative = new Set(["new-war", "tariff-escalation", "banking-stress"]).has(selectedShockKey);
+  const shockCardClass = shockIsPositive
+    ? "rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+    : shockIsNegative
+      ? "rounded-xl border border-rose-200 bg-rose-50 p-4"
+      : "rounded-xl border border-border/70 bg-panel/70 p-4";
 
   return (
     <div className="space-y-6">
@@ -221,6 +297,7 @@ export function ScenarioWorkbench() {
                   mutation.mutate({
                     run_type: "macro_inference",
                     triggered_by: label,
+                    simulation_label: label,
                     notes,
                     persist_opportunities: persistOpportunities,
                     event_scenario: selectedShockKey === "none" ? undefined : {
@@ -257,18 +334,20 @@ export function ScenarioWorkbench() {
                       <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Run Status</div>
                       <div className="mt-2 text-lg font-semibold">{mutation.data.status}</div>
                     </div>
-                  <div className="rounded-xl border border-border/70 bg-panel/70 p-4">
+                  <div className={regimeCardClass}>
                     <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Selected Regime</div>
-                    <div className="mt-2 text-lg font-semibold">
+                    <div className={regimeTitleClass}>
                       {simulationStory?.regime_detected?.regime_name ?? (mutation.data.payload?.regime_results as any)?.selected_regime?.regime_name ?? "Unavailable"}
                     </div>
-                    <div className="mt-2 text-sm text-muted-foreground">{simulationStory?.regime_detected?.summary ?? "No regime summary available yet."}</div>
+                    <div className={regimeBodyClass}>{simulationStory?.regime_detected?.summary ?? "No regime summary available yet."}</div>
                   </div>
                   {simulationStory?.shock_scenario?.label ? (
-                    <div className="rounded-xl border border-border/70 bg-panel/70 p-4">
+                    <div className={shockCardClass}>
                       <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Shock Layer Applied</div>
-                      <div className="mt-2 text-lg font-semibold">{simulationStory.shock_scenario.label}</div>
-                      <div className="mt-2 text-sm text-muted-foreground">
+                      <div className={shockIsPositive ? "mt-2 text-lg font-semibold text-emerald-950" : shockIsNegative ? "mt-2 text-lg font-semibold text-rose-950" : "mt-2 text-lg font-semibold"}>
+                        {simulationStory.shock_scenario.label}
+                      </div>
+                      <div className={shockIsPositive ? "mt-2 text-sm text-emerald-900" : shockIsNegative ? "mt-2 text-sm text-rose-900" : "mt-2 text-sm text-muted-foreground"}>
                         {simulationStory.shock_scenario.severity} severity over a {simulationStory.shock_scenario.horizon} horizon
                       </div>
                     </div>
@@ -310,12 +389,23 @@ export function ScenarioWorkbench() {
                   </div>
                 </div>
                 {(simulationStory?.shock_scenario?.applied_impacts ?? []).map((impact) => (
-                  <div key={impact.indicator_code} className="rounded-xl border border-border/60 bg-panel/60 p-3">
+                  <div
+                    key={impact.indicator_code}
+                    className={
+                      impact.signal_delta >= 0
+                        ? "rounded-xl border border-rose-200 bg-rose-50 p-3"
+                        : "rounded-xl border border-emerald-200 bg-emerald-50 p-3"
+                    }
+                  >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-medium">{impact.indicator_code}</div>
-                      <div className="text-xs text-primary">signal {impact.signal_delta >= 0 ? "+" : ""}{impact.signal_delta.toFixed(2)}</div>
+                      <div className={impact.signal_delta >= 0 ? "font-medium text-rose-950" : "font-medium text-emerald-950"}>
+                        {impact.indicator_code}
+                      </div>
+                      <div className={impact.signal_delta >= 0 ? "text-xs text-rose-700" : "text-xs text-emerald-700"}>
+                        signal {impact.signal_delta >= 0 ? "+" : ""}{impact.signal_delta.toFixed(2)}
+                      </div>
                     </div>
-                    <div className="mt-1 text-sm text-muted-foreground">
+                    <div className={impact.signal_delta >= 0 ? "mt-1 text-sm text-rose-800" : "mt-1 text-sm text-emerald-800"}>
                       Value shift {impact.value_delta >= 0 ? "+" : ""}{impact.value_delta.toFixed(2)}
                     </div>
                   </div>
@@ -351,7 +441,7 @@ export function ScenarioWorkbench() {
                         <div className="font-medium">{driver.driver_name}</div>
                         <div className="text-xs text-primary">{driver.driver_code}</div>
                       </div>
-                      <div className="mt-1 text-sm text-muted-foreground">
+                      <div className={driver.contribution >= 0 ? "mt-1 text-sm text-emerald-700" : "mt-1 text-sm text-rose-700"}>
                         Net score {driver.net_score.toFixed(2)} | regime contribution {driver.contribution.toFixed(2)}
                       </div>
                     </div>
@@ -378,11 +468,13 @@ export function ScenarioWorkbench() {
                   title="Likely Outperformers"
                   items={simulationStory?.industry_effects_mapped?.outperformers ?? []}
                   emptyMessage="No industry outperformers mapped yet."
+                  tone="positive"
                 />
                 <ListBlock
                   title="Likely Underperformers"
                   items={simulationStory?.industry_effects_mapped?.underperformers ?? []}
                   emptyMessage="No industry underperformers mapped yet."
+                  tone="negative"
                 />
                 <ListBlock
                   title="Transmission Channels"
@@ -420,7 +512,7 @@ export function ScenarioWorkbench() {
                     <div className="mt-2 flex flex-wrap gap-2">
                       {(opportunity.beneficiary_industries ?? []).length ? (
                         opportunity.beneficiary_industries?.map((industry) => (
-                          <span key={industry} className="rounded-full border border-border/60 bg-panel/70 px-3 py-1 text-sm">
+                          <span key={industry} className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm text-emerald-900">
                             {industry}
                           </span>
                         ))
@@ -440,6 +532,120 @@ export function ScenarioWorkbench() {
           </ScrollArea>
         </CardContent>
       </Card>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>India Fallout Overview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-96">
+              <div className="space-y-4 pr-4">
+                <div className="rounded-xl border border-border/70 bg-panel/70 p-4">
+                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Country Overlay</div>
+                  <div className="mt-2 text-lg font-semibold">
+                    {simulationStory?.country_fallout?.country_label ?? "India"}
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    Outlook: {simulationStory?.country_fallout?.outlook ?? "Run a simulation"}
+                  </div>
+                </div>
+                <ListBlock
+                  title="Why This Fallout Is Happening"
+                  items={simulationStory?.country_fallout?.interpretation_reasons ?? []}
+                  emptyMessage="Interpretation reasons will appear here after a simulation."
+                />
+                <ListBlock
+                  title="Likely Beneficiaries"
+                  items={simulationStory?.country_fallout?.sector_effects?.beneficiaries ?? []}
+                  emptyMessage="India beneficiary sectors will appear here after a simulation."
+                  tone="positive"
+                />
+                <ListBlock
+                  title="Likely Headwinds"
+                  items={simulationStory?.country_fallout?.sector_effects?.headwinds ?? []}
+                  emptyMessage="India sector headwinds will appear here after a simulation."
+                  tone="negative"
+                />
+                <ListBlock
+                  title="India Opportunity Ideas"
+                  items={simulationStory?.country_fallout?.opportunities ?? []}
+                  emptyMessage="India opportunity ideas will appear here after a simulation."
+                />
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>US Regime to India Transmission</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-96">
+              <div className="space-y-4 pr-4">
+                <div className="rounded-xl border border-border/70 bg-panel/70 p-4">
+                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Global Channels</div>
+                  <div className="mt-3 space-y-2">
+                    {(simulationStory?.country_fallout?.global_channels ?? []).length ? (
+                      simulationStory?.country_fallout?.global_channels?.map((channel) => (
+                        <div
+                          key={channel.channel_code}
+                          className={
+                            channel.score >= 0
+                              ? "rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900"
+                              : "rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"
+                          }
+                        >
+                          <div className={channel.score >= 0 ? "font-medium text-rose-950" : "font-medium text-emerald-950"}>
+                            {INDIA_CHANNEL_LABELS[channel.channel_code] ?? channel.channel_code}
+                          </div>
+                          <div className="mt-1">{describeIndiaChannel(channel.channel_code, channel.score)}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-sm text-muted-foreground">Global transmission channels will appear here after a simulation.</div>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {(simulationStory?.country_fallout?.macro_impacts ?? []).map((impact) => (
+                    <div
+                      key={impact.impact_code}
+                      className={
+                        impact.score >= 0
+                          ? "rounded-xl border border-rose-200 bg-rose-50 p-3"
+                          : "rounded-xl border border-emerald-200 bg-emerald-50 p-3"
+                      }
+                    >
+                      <div className={impact.score >= 0 ? "font-medium text-rose-950" : "font-medium text-emerald-950"}>
+                        {impact.impact_label}
+                      </div>
+                      {(impact.reasons ?? []).length ? (
+                        <div className="mt-2 space-y-1">
+                          {impact.reasons?.map((reason) => (
+                            <div
+                              key={reason}
+                              className={impact.score >= 0 ? "text-sm text-rose-900" : "text-sm text-emerald-900"}
+                            >
+                              {reason}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                  {!(simulationStory?.country_fallout?.macro_impacts ?? []).length ? (
+                    <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
+                      India macro impact explanations will appear here after a simulation.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -448,18 +654,27 @@ function ListBlock({
   title,
   items,
   emptyMessage,
+  tone = "neutral",
 }: {
   title: string;
   items: string[];
   emptyMessage: string;
+  tone?: "positive" | "negative" | "neutral";
 }) {
+  const chipClassName =
+    tone === "positive"
+      ? "rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm text-emerald-900"
+      : tone === "negative"
+        ? "rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-sm text-rose-900"
+        : "rounded-full border border-border/60 bg-panel/70 px-3 py-1 text-sm";
+
   return (
     <div>
       <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{title}</div>
       <div className="mt-2 flex flex-wrap gap-2">
         {items.length ? (
           items.map((item) => (
-            <span key={item} className="rounded-full border border-border/60 bg-panel/70 px-3 py-1 text-sm">
+            <span key={item} className={chipClassName}>
               {item}
             </span>
           ))
